@@ -11,13 +11,6 @@ use crate::util::{
 use super::persistent_state;
 use crate::util::sync::IntoSendSync;
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, Default)]
-pub enum Mode {
-    #[default]
-    Pair,
-    Connected,
-}
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq)]
 pub struct DeviceState {
     pub sms_send_phone_number: Option<String>,
@@ -25,8 +18,10 @@ pub struct DeviceState {
     pub sms_send_twilio_phone_number: Option<String>,
     pub sms_send_twilio_account_sid: Option<String>,
     pub sms_send_twilio_auth_token: Option<String>,
+    pub sms_send_message_body: Option<String>,
     pub activation_time_start: Time,
     pub activation_time_end: Option<Time>,
+    pub buzzer_enabled: bool,
 }
 
 impl Default for DeviceState {
@@ -37,8 +32,10 @@ impl Default for DeviceState {
             sms_send_twilio_phone_number: None,
             sms_send_twilio_account_sid: None,
             sms_send_twilio_auth_token: None,
+            sms_send_message_body: None,
             activation_time_start: time!(20:00:00),
             activation_time_end: Some(time!(00:00:00)),
+            buzzer_enabled: true,
         }
     }
 }
@@ -64,12 +61,20 @@ impl DeviceState {
         self.sms_send_twilio_auth_token.as_deref()
     }
 
+    pub fn sms_send_message_body(&self) -> Option<&str> {
+        self.sms_send_message_body.as_deref()
+    }
+
     pub fn activation_time_start(&self) -> &Time {
         &self.activation_time_start
     }
 
     pub fn activation_time_end(&self) -> Option<&Time> {
         self.activation_time_end.as_ref()
+    }
+
+    pub fn buzzer_enabled(&self) -> bool {
+        self.buzzer_enabled
     }
 }
 
@@ -187,9 +192,22 @@ impl<S: persistent_state::Storage<DeviceState>, M: BorrowMut<DeviceStateManager<
         })
     }
 
+    pub fn sms_send_message_body(&self) -> Option<&str> {
+        self.state_manager.borrow().state().sms_send_message_body()
+    }
+
+    pub fn set_sms_send_message_body(&mut self, message_body: &str) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.sms_send_message_body = Some(message_body.to_string());
+            c
+        })
+    }
+
     pub fn set_sms(
         &mut self,
         phone_number: Option<&str>,
+        message_body: Option<&str>,
         throttle: u64,
         twilio_phone_number: Option<&str>,
         account_sid: Option<&str>,
@@ -199,6 +217,7 @@ impl<S: persistent_state::Storage<DeviceState>, M: BorrowMut<DeviceStateManager<
             let mut c = state.clone();
             c.sms_send_phone_number = phone_number.map(|s| s.to_string());
             c.sms_send_throttle = throttle;
+            c.sms_send_message_body = message_body.map(|s| s.to_string());
             c.sms_send_twilio_phone_number = twilio_phone_number.map(|s| s.to_string());
             c.sms_send_twilio_account_sid = account_sid.map(|s| s.to_string());
             c.sms_send_twilio_auth_token = auth_token.map(|s| s.to_string());
@@ -235,6 +254,26 @@ impl<S: persistent_state::Storage<DeviceState>, M: BorrowMut<DeviceStateManager<
             let mut c = state.clone();
             c.activation_time_start = *time_start;
             c.activation_time_end = Some(*time_end);
+            c
+        })
+    }
+
+    pub fn buzzer_enabled(&self) -> bool {
+        self.state_manager.borrow().state().buzzer_enabled()
+    }
+
+    pub fn set_buzzer_enabled(&mut self, enabled: bool) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.buzzer_enabled = enabled;
+            c
+        })
+    }
+
+    pub fn set_buzzer(&mut self, enabled: bool) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.buzzer_enabled = enabled;
             c
         })
     }

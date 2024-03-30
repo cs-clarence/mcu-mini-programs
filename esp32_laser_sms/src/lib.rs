@@ -13,11 +13,20 @@ pub mod core;
 pub mod service;
 pub mod util;
 
+use base64::Engine;
+use embedded_svc::http::client::Client as HttpClient;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
-    hal::{gpio::PinDriver, peripherals::Peripherals, task::block_on},
+    hal::{
+        gpio::PinDriver,
+        ledc::{self, LedcDriver, LedcTimerDriver},
+        peripherals::Peripherals,
+        task::block_on,
+        units::FromValueType as _,
+    },
     http::{
-        server::{Configuration, EspHttpServer},
+        client::{self, EspHttpConnection},
+        server::{self, EspHttpServer},
         Method,
     },
     io::Write,
@@ -34,6 +43,7 @@ use time::{
     macros::{format_description, offset, time},
     OffsetDateTime, Time, UtcOffset,
 };
+use urlencoding::encode;
 use util::{
     result::{Ok, Result},
     tracing,
@@ -41,7 +51,11 @@ use util::{
 
 use crate::{
     core::device_state,
-    util::{delay::blocking::delay_ms, result, sync::IntoSendSync as _},
+    util::{
+        delay::blocking::delay_ms,
+        result::{self, bail},
+        sync::IntoSendSync as _,
+    },
 };
 
 fn get_free_heap_size() -> u32 {
@@ -68,9 +82,19 @@ async fn async_main<'a>() -> Result<()> {
     let peripherals = Peripherals::take()?;
     let pins = peripherals.pins;
     let ldr_photoresistor_pin = pins.gpio32;
-    // let piezo_buzzer_pin = pins.gpio33;
-
     let ldr_photoresistor = Rc::new(PinDriver::input(ldr_photoresistor_pin)?);
+
+    let piezo_buzzer_pin = pins.gpio33;
+    let piezo_buzzer_channel = peripherals.ledc.channel0;
+    let timer_driver = LedcTimerDriver::new(
+        peripherals.ledc.timer0,
+        &ledc::config::TimerConfig {
+            frequency: 2200.Hz(),
+            speed_mode: ledc::SpeedMode::HighSpeed,
+            ..Default::default()
+        },
+    )?;
+    let mut piezo_buzzer = LedcDriver::new(piezo_buzzer_channel, timer_driver, piezo_buzzer_pin)?;
 
     let storage = device_state::DeviceStateStorage::new("/spiflash/conf/device.bin");
     let cfg = device_state::DeviceStateManager::new_loaded_or_default(storage)?;
@@ -108,7 +132,7 @@ async fn async_main<'a>() -> Result<()> {
         get_free_heap_size(),
     );
 
-    let mut server = EspHttpServer::new(&Configuration {
+    let mut server = EspHttpServer::new(&server::Configuration {
         stack_size: HTTP_SERVER_STACK_SIZE,
         ..Default::default()
     })?;
@@ -164,7 +188,7 @@ async fn async_main<'a>() -> Result<()> {
                 res.write_all(resp.as_bytes())?;
 
                 defer! {
-                    delay_ms(2000);
+                    delay_ms(5000);
                     block_on(async {
                         _  = wifi.switch_to_sta_only().await;
                     });
@@ -179,6 +203,7 @@ async fn async_main<'a>() -> Result<()> {
         #[derive(Deserialize)]
         struct SetSmsSendRequest {
             phone_number: Option<String>,
+            message_body: Option<String>,
             throttle: u64,
             twilio_phone_number: Option<String>,
             twilio_account_sid: Option<String>,
@@ -199,6 +224,7 @@ async fn async_main<'a>() -> Result<()> {
             let mut dvc = dvc.lock();
             dvc.set_sms(
                 save_req.phone_number.as_deref(),
+                save_req.message_body.as_deref(),
                 save_req.throttle,
                 save_req.twilio_phone_number.as_deref(),
                 save_req.twilio_account_sid.as_deref(),
@@ -249,28 +275,61 @@ async fn async_main<'a>() -> Result<()> {
     }
 
     {
+        #[derive(Deserialize)]
+        struct SetBuzzerRequest {
+            enabled: bool,
+        }
+
+        let dvc = dev_svc.clone();
+        server.fn_handler::<result::Error, _>("/buzzer", Method::Post, move |mut req| {
+            let mut buff = [0u8; 2 * 1024];
+
+            let end = req.read(&mut buff).inspect_err(|e| {
+                tracing::error!("Error: {:?}", e);
+            })?;
+
+            let set_req: SetBuzzerRequest =
+                serde_json::from_slice(&buff[..end]).inspect_err(|e| {
+                    tracing::error!("Error: {:?}", e);
+                })?;
+
+            let mut dvc = dvc.lock();
+            dvc.set_buzzer(set_req.enabled).inspect_err(|e| {
+                tracing::error!("Error: {:?}", e);
+            })?;
+
+            req.into_ok_response()?.flush()?;
+            Ok(())
+        })?;
+    }
+
+    {
         #[derive(Serialize)]
-        struct GetDeviceInfoResponse {
-            sms_send_phone_number: Option<String>,
+        struct GetDeviceInfoResponse<'a> {
+            sms_send_phone_number: Option<&'a str>,
+            sms_send_message_body: Option<&'a str>,
             sms_send_throttle: u64,
-            sms_send_twilio_account_sid: Option<String>,
-            sms_send_twilio_auth_token: Option<String>,
+            sms_send_twilio_phone_number: Option<&'a str>,
+            sms_send_twilio_account_sid: Option<&'a str>,
+            sms_send_twilio_auth_token: Option<&'a str>,
             activation_time_start: Time,
             activation_time_end: Option<Time>,
+            buzzer_enabled: bool,
         }
 
         let dvc = dev_svc.clone();
         server.fn_handler::<result::Error, _>("/device-info", Method::Get, move |req| {
             let dvc = dvc.lock();
             let resp = GetDeviceInfoResponse {
-                sms_send_phone_number: dvc.sms_send_phone_number().map(|s| s.to_string()),
+                sms_send_phone_number: dvc.sms_send_phone_number(),
+                sms_send_message_body: dvc.sms_send_message_body(),
                 sms_send_throttle: dvc.sms_send_throttle(),
-                sms_send_twilio_account_sid: dvc
-                    .sms_send_twilio_account_sid()
-                    .map(|s| s.to_string()),
-                sms_send_twilio_auth_token: dvc.sms_send_twilio_auth_token().map(|s| s.to_string()),
+                sms_send_twilio_phone_number: dvc.sms_send_twilio_phone_number(),
+                sms_send_twilio_account_sid: dvc.sms_send_twilio_account_sid(),
+                sms_send_twilio_auth_token: dvc.sms_send_twilio_auth_token(),
                 activation_time_start: *dvc.activation_time_start(),
                 activation_time_end: dvc.activation_time_end().copied(),
+                buzzer_enabled: dvc.buzzer_enabled(),
             };
 
             let mut res = req.into_response(200, None, &[("Content-Type", "application/json")])?;
@@ -281,52 +340,73 @@ async fn async_main<'a>() -> Result<()> {
     }
 
     let mut is_prev_high = false;
-    let mut time_sms_last_sent = system_time_now();
-    let mut did_trigger_sync_cod = false;
+    let mut time_sms_last_sent =
+        system_time_now() - dev_svc.lock().sms_send_throttle().std_milliseconds();
+    let mut did_trigger_sync_code = false;
     loop {
-        delay_ms(10);
-        if unsafe { TIME_SYNCED } && !did_trigger_sync_cod {
-            did_trigger_sync_cod = true;
+        delay_ms(100);
+        if unsafe { TIME_SYNCED } && !did_trigger_sync_code {
             tracing::info!("Time synced");
+            did_trigger_sync_code = true;
         }
+        let photoresistor_is_high = ldr_photoresistor.is_high();
 
         let dvc = dev_svc.lock();
         let is_active = is_active(dvc.activation_time_start(), dvc.activation_time_end());
 
         if !is_active {
+            piezo_buzzer.set_duty(0)?;
             continue;
         }
 
-        if ldr_photoresistor.is_high() && !is_prev_high {
+        if dvc.buzzer_enabled() && photoresistor_is_high {
+            piezo_buzzer.set_duty(100)?;
+        } else {
+            piezo_buzzer.set_duty(0)?;
+        }
+
+        if photoresistor_is_high && !is_prev_high {
             tracing::info!("Laser is cut");
             is_prev_high = true;
 
             let throttle = dvc.sms_send_throttle();
             let now = system_time_now();
             let next_send = time_sms_last_sent + throttle.std_milliseconds();
-            let should_send_sms = next_send <= now;
-            if should_send_sms {
+            let passed_throttle = next_send <= now;
+            let connected_to_wifi = wifi.lock().is_sta_enabled()?;
+            if passed_throttle && connected_to_wifi {
                 time_sms_last_sent = now;
                 let twilio = (
+                    dvc.sms_send_phone_number(),
+                    dvc.sms_send_message_body(),
                     dvc.sms_send_twilio_phone_number(),
-                    dvc.sms_send_twilio_account_sid(),
                     dvc.sms_send_twilio_account_sid(),
                     dvc.sms_send_twilio_auth_token(),
                 );
 
-                if let (Some(to), Some(from), Some(sid), Some(auth_token)) = twilio {
-                    tracing::info!(
-                        "Sending SMS to: {}, from: {}, using {} and {}",
-                        to,
-                        from,
-                        sid,
-                        auth_token
-                    );
+                if let (Some(to), Some(body), Some(from), Some(sid), Some(auth_token)) = twilio {
+                    if to.is_empty()
+                        || body.is_empty()
+                        || from.is_empty()
+                        || sid.is_empty()
+                        || auth_token.is_empty()
+                    {
+                        tracing::warn!("Some of the required fields are empty, skipping SMS");
+                        continue;
+                    }
+
+                    tracing::info!("Sending SMS to {}", to);
+
+                    let result = send_twilio_sms(to, body, from, sid, auth_token);
+
+                    if let Err(e) = result {
+                        tracing::error!("Error: {:?}", e);
+                    }
                 }
             }
         } else if ldr_photoresistor.is_low() && is_prev_high {
-            tracing::info!("Laser is in contact");
             is_prev_high = false;
+            tracing::info!("Laser is in contact");
         }
     }
 }
@@ -346,6 +426,72 @@ fn is_active(time_start: &Time, time_end: Option<&Time>) -> bool {
 
 fn system_time_now() -> Time {
     OffsetDateTime::now_utc().to_offset(OFFSET).time()
+}
+
+fn send_twilio_sms(
+    to_phone_number: &str,
+    body: &str,
+    from_phone_number: &str,
+    account_sid: &str,
+    auth_token: &str,
+) -> Result<()> {
+    // #[derive(Serialize)]
+    // #[serde(rename_all = "PascalCase")]
+    // struct Params<'a> {
+    //     to: &'a str,
+    //     from: &'a str,
+    //     body: &'a str,
+    // }
+
+    let url = format!(
+        "https://@api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+        sid = account_sid,
+    );
+
+    // let params = Params {
+    //     to: to_phone_number,
+    //     from: from_phone_number,
+    //     body,
+    // };
+    let basic_auth_b64 =
+        base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", account_sid, auth_token));
+
+    let basic_auth_value = format!("Basic {}", basic_auth_b64);
+
+    let basic_auth_header: (&str, &str) = ("Authorization", &basic_auth_value);
+
+    let conn = EspHttpConnection::new(&client::Configuration::default())?;
+    let mut http = HttpClient::wrap(conn);
+
+    let headers = [
+        basic_auth_header,
+        ("Content-Type", "application/x-www-form-urlencoded"),
+    ];
+    let mut req = http.post(&url, &headers)?;
+
+    // let params = serde_urlencoded::to_string(params)?;
+
+    // manually generated URL-encoded string
+    // for some reason it doesn't always work with serde_urlencoded
+    write!(
+        req,
+        "To={}&From={}&Body={}",
+        encode(to_phone_number),
+        encode(from_phone_number),
+        encode(body),
+    )?;
+
+    let mut res = req.submit()?;
+    let status = res.status();
+    if !(200..300).contains(&status) {
+        let mut buf = [0u8; 2 * 1024];
+        let read = res.read(&mut buf)?;
+
+        let body = String::from_utf8_lossy(&buf[..read]);
+        bail!("Status: {} {}", status, body);
+    }
+
+    Ok(())
 }
 
 pub fn main() -> eyre::Result<()> {
