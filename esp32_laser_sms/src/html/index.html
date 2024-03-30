@@ -135,6 +135,12 @@
     <button>Save</button>
 </form>
 
+<form id="device">
+    <h2>Device</h2>
+    <button type="button" id="reset-button" style="background-color: red;">Reset</button>
+    <button type="button" id="restart-button" style="background-color: red;">Restart</button>
+</form>
+
 <script defer>
     const wifiForm = document.querySelector("#wifi");
     const ssid = wifiForm.querySelector("#ssid");
@@ -150,6 +156,9 @@
     
     const buzzerForm = document.querySelector("#buzzer");
     const buzzerSaveButton = buzzerForm.querySelector("button");
+    const deviceForm = document.querySelector("#device");
+    const resetButton = deviceForm.querySelector("#reset-button");
+    const restartButton = deviceForm.querySelector("#restart-button");
 
     showPassword.addEventListener("change", (e) => {
         password.type = e.target.checked ? "text" : "password"
@@ -288,6 +297,42 @@
         }
     }
     
+    async function resetDevice() {
+        const reset = confirm("Are you sure you want to reset the device?")
+        
+        if (!reset) {
+            return;
+        }
+
+        const response = await fetch("/reset-device", {
+            method: "POST"
+        });
+        if (response.ok) {
+            alert("Device is being reset");
+        } else {
+            alert(`Failed to reset Device: ${response.statusText}`);
+        }
+    
+    }
+    
+    async function restartDevice() {
+        const restart = confirm("Are you sure you want to restart the device?")
+        
+        if (!restart) {
+            return;
+        }
+        const response = await fetch("/restart-device", {
+            method: "POST"
+        });
+        if (response.ok) {
+            alert("Device is being restarted");
+        } else {
+            alert(`Failed to restart Device: ${response.statusText}`);
+        }
+    }
+    
+    
+    
     function removeSubseconds(time) {
         return time.split(".")[0];
     }
@@ -297,6 +342,8 @@
     smsSendForm.addEventListener("submit", saveSmsSend);
     activationForm.addEventListener("submit", saveActivation);
     buzzerForm.addEventListener("submit", saveBuzzer);
+    resetButton.addEventListener("click", resetDevice);
+    restartButton.addEventListener("click", restartDevice);
     loadData();
 </script>
 

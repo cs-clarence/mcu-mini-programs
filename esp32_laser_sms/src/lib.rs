@@ -339,6 +339,22 @@ async fn async_main<'a>() -> Result<()> {
         })?;
     }
 
+    {
+        server.fn_handler::<result::Error, _>("/reset-device", Method::Post, move |req| {
+            Device::reset()?;
+
+            req.into_ok_response()?.flush()?;
+            Ok(())
+        })?;
+
+        server.fn_handler::<result::Error, _>("/restart-device", Method::Post, move |req| {
+            Device::restart();
+
+            req.into_ok_response()?.flush()?;
+            Ok(())
+        })?;
+    }
+
     let mut is_prev_high = false;
     let mut time_sms_last_sent =
         system_time_now() - dev_svc.lock().sms_send_throttle().std_milliseconds();
