@@ -131,7 +131,11 @@ impl<Config: Serialize + for<'a> Deserialize<'a> + Default> Storage<Config>
     type Error = Error;
 
     fn save(&self, item: &Config) -> Result<(), Self::Error> {
-        let f = File::options().write(true).open(&self.path)?;
+        let f = File::options()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&self.path)?;
 
         ciborium::into_writer(item, f)?;
 

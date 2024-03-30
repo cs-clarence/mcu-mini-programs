@@ -6,9 +6,13 @@
   <title>Wi-Fi Connect</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin: 50px;
+        font-family: Arial, sans-serif;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        margin: 24px;
+        align-items: center;
     }
 
     form {
@@ -18,6 +22,12 @@
       padding: 20px;
       border-radius: 10px;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      max-width: 420px;
+      width: 100%;
+    }
+    
+    h2 {
+      margin-top: 0;
     }
 
     label {
@@ -59,55 +69,171 @@
 </head>
 <body>
 
-<form>
-  <label for="ssid">Wi-Fi SSID:</label>
-  <input type="text" id="ssid" name="ssid" required maxlength="32">
+<form id="wifi">
+    <h2>WiFi</h2>
+    <label for="ssid">SSID:</label>
+    <input type="text" id="ssid" name="ssid" required maxlength="32">
 
-  <label for="password">Wi-Fi Password:</label>
-  <input type="password" id="password" name="password" required minlength="8"
+    <label for="password">Password:</label>
+    <input type="password" id="password" name="password" required minlength="8"
          maxlength="63">
 
-  <label class="show-password">
-    <span>
-      Show Password
-    </span>
-    <input type="checkbox" id="show-password-checkbox">
-  </label>
+    <label class="show-password">
+        <span>Show Password</span>
+        <input type="checkbox" id="show-password-checkbox">
+    </label>
 
-  <button id="connect-button" type="button" onclick="connect()">Connect</button>
+    <button id="connect-button">Connect</button>
+</form>
+
+<form id="sms-send">
+    <h2>SMS Send</h2>
+    <label for="phone-number">Phone Number</label>
+    <input type="number" id="phone-number" name="phone-number">
+    <label for="throttle">Throttle (MS)</label>
+    <input type="number" id="throttle" name="throttle" required value="0" min="0">
+    <label for="account-sid">Twilio Account SID</label>
+    <input type="text" id="account-sid" name="account-sid">
+    <label for="auth-token">Twilio Auth Token</label>
+    <input type="text" id="auth-token" name="auth-token">
+    <label for="twilio-phone-number">Twilio Phone Number</label>
+    <input type="number" id="twilio-phone-number" name="twilio-phone-number">
+    <button>Save</button>
+</form>
+
+<form id="activation">
+    <h2>Activation</h2>
+    <label for="time-start">Time Start</label>
+    <input type="time" id="time-start" name="time-start" required>
+    <label for="time-end">Time End</label>
+    <input type="time" id="time-end" name="time-end" required>
+    <button>Save</button>
 </form>
 
 <script>
-  const ssid = document.querySelector("#ssid");
-  const password = document.querySelector("#password");
-  const button = document.querySelector("#connect-button")
-  const showPassword = document.querySelector("#show-password-checkbox")
+    const wifiForm = document.querySelector("#wifi");
+    const ssid = wifiForm.querySelector("#ssid");
+    const password = wifiForm.querySelector("#password");
+    const connectButton = wifiForm.querySelector("#connect-button")
+    const showPassword = wifiForm.querySelector("#show-password-checkbox")
 
-  showPassword.addEventListener("change", (e) => {
-    password.type = e.target.checked ? "text" : "password"
-  })
+    const activationForm = document.querySelector("#activation");
+    const activationSaveButton = activationForm.querySelector("button");
 
-  async function connect() {
-    button.disabled = true;
-    alert(`Pet Feeder is connecting to your Wi-Fi network...\nSSID: ${ssid.value}`);
-    const response = (await fetch("/wifi-credentials", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        ssid: ssid.value,
-        password: password.value,
-      })
-    }));
+    const smsSendForm = document.querySelector("#sms-send");
+    const smsSendSaveButton = smsSendForm.querySelector("button");
 
-    if (response.ok) {
-      alert("Pet Feeder is now connected to your WiFi network.");
-    } else {
-      alert("Pet Feeder couldn't connect to your WiFi network.");
+
+    showPassword.addEventListener("change", (e) => {
+        password.type = e.target.checked ? "text" : "password"
+    })
+
+    /**
+      * @param {SubmitEvent} event
+      */
+    async function connect(event) {
+        event.preventDefault();
+
+        connectButton.disabled = true;
+        alert(`Device is connecting to your Wi-Fi network...\nSSID: ${ssid.value}`);
+        const response = (await fetch("/wifi-credentials", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                ssid: ssid.value,
+                psk: password.value,
+            })
+        }));
+
+        if (response.ok) {
+            const data = await response.json();
+            const ip = data.new_ip;
+            alert(`Device is now connected to your WiFi network. New IP Address is: ${ip}`);
+        } else {
+            alert("Device couldn't connect to your WiFi network.");
+        }
+        connectButton.disabled = false;
     }
-    button.disabled = false;
-  }
+    
+    async function saveSmsSend(event) {
+        event.preventDefault();
+
+        smsSendSaveButton.disabled = true;
+        const response = await fetch("/sms-send", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                throttle: parseInt(smsSendForm.querySelector("#throttle").value),
+                phone_number: smsSendForm.querySelector("#phone-number").value,
+                twilio_account_sid: smsSendForm.querySelector("#account-sid").value,
+                twilio_auth_token : smsSendForm.querySelector("#auth-token").value,
+                twilio_phone_number: parseInt(smsSendForm.querySelector("#twilio-phone-number").value)
+            })
+        })
+        
+        if (response.ok) {
+            alert("SMS Send saved");
+        } else {
+            alert(`Failed to save SMS Send: ${response.statusText}`);
+        }
+        
+        smsSendSaveButton.disabled = false;
+    }
+    
+    async function saveActivation(event) {
+        event.preventDefault();
+
+        activationSaveButton.disabled = true;
+        const response = await fetch("/activation", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                time_start: removeSubseconds(activationForm.querySelector("#time-start").value),
+                time_end: removeSubseconds(activationForm.querySelector("#time-end").value),
+            })
+        })
+        
+        if (response.ok) {
+            alert("Activation saved");
+        } else {
+            alert(`Failed to save Activation: ${response.statusText}`);
+        }
+
+        activationSaveButton.disabled = false;
+    }
+    
+    async function loadData() {
+        const response = await fetch("/device-info");
+        const data = await response.json();
+        
+
+        if (response.ok) {
+            document.querySelector("#throttle").value = data.sms_send_throttle
+            document.querySelector("#phone-number").value = data.sms_send_phone_number
+            document.querySelector("#account-sid").value = data.sms_send_twilio_account_sid
+            document.querySelector("#auth-token").value = data.sms_send_twilio_auth_token
+            document.querySelector("#twilio-phone-number").value = data.sms_send_twilio_phone_number
+
+            document.querySelector("#time-start").value = data.activation_time_start
+            document.querySelector("#time-end").value = data.activation_time_end
+        }
+    }
+    
+    function removeSubseconds(time) {
+        return time.split(".")[0];
+    }
+    
+    
+    wifiForm.addEventListener("submit", connect);
+    smsSendForm.addEventListener("submit", saveSmsSend);
+    activationForm.addEventListener("submit", saveActivation);
+    loadData();
 </script>
 
 </body>

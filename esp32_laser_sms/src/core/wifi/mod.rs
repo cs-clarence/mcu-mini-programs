@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, future::Future, str::FromStr};
 
-use crate::util::collection::alloc::hash::HashSet;
+use crate::util::{collection::alloc::hash::HashSet, result::error};
 use derivative::Derivative;
 use embedded_svc::{ipv4::IpInfo, wifi::AccessPointInfo};
 use enumset::{enum_set, EnumSet};
@@ -217,7 +217,7 @@ impl<M: BorrowMut<WifiStateManager>> Wifi<M> {
             .filter_map(|ap| {
                 creds
                     .iter()
-                    .find(|cred| cred.ssid == ap.ssid.to_string() && cred.bssid == ap.bssid)
+                    .find(|cred| *cred.ssid == *ap.ssid && cred.bssid == ap.bssid)
                     .cloned()
             })
             .collect::<Vec<_>>();
@@ -356,8 +356,8 @@ impl<M: BorrowMut<WifiStateManager>> Wifi<M> {
 
         let client = ClientConfiguration {
             auth_method,
-            ssid: HString::from_str(ssid).map_err(|_| eyre::eyre!("Invalid SSID"))?,
-            password: HString::from_str(psk).map_err(|_| eyre::eyre!("Invalid PSK"))?,
+            ssid: HString::from_str(ssid).map_err(|_| error!("Invalid SSID"))?,
+            password: HString::from_str(psk).map_err(|_| error!("Invalid PSK"))?,
             bssid,
             channel,
         };

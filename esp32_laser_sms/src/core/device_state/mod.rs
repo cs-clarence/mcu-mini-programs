@@ -1,9 +1,10 @@
 use std::borrow::BorrowMut;
 
 use serde::{Deserialize, Serialize};
+use time::{macros::time, Time};
 
 use crate::util::{
-    result::{error, Result},
+    result::{self, error, Result},
     sync::{arc_sync_mutex, ArcSyncMutex},
 };
 
@@ -17,34 +18,58 @@ pub enum Mode {
     Connected,
 }
 
-#[inline(always)]
-fn default_name() -> String {
-    "Feeder Device".to_string()
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq)]
 pub struct DeviceState {
-    #[serde(default = "default_name")]
-    pub name: String,
-    pub mode: Mode,
+    pub sms_send_phone_number: Option<String>,
+    pub sms_send_throttle: u64,
+    pub sms_send_twilio_phone_number: Option<String>,
+    pub sms_send_twilio_account_sid: Option<String>,
+    pub sms_send_twilio_auth_token: Option<String>,
+    pub activation_time_start: Time,
+    pub activation_time_end: Option<Time>,
 }
 
 impl Default for DeviceState {
     fn default() -> Self {
         Self {
-            name: default_name(),
-            mode: Mode::Pair,
+            sms_send_phone_number: None,
+            sms_send_throttle: 60_000, // 1 sms per minute
+            sms_send_twilio_phone_number: None,
+            sms_send_twilio_account_sid: None,
+            sms_send_twilio_auth_token: None,
+            activation_time_start: time!(20:00:00),
+            activation_time_end: Some(time!(00:00:00)),
         }
     }
 }
 
 impl DeviceState {
-    pub fn mode(&self) -> Mode {
-        self.mode
+    pub fn sms_send_phone_number(&self) -> Option<&str> {
+        self.sms_send_phone_number.as_deref()
     }
 
-    pub fn set_mode(&mut self, mode: Mode) {
-        self.mode = mode;
+    pub fn sms_send_thottle(&self) -> u64 {
+        self.sms_send_throttle
+    }
+
+    pub fn sms_send_twilio_phone_number(&self) -> Option<&str> {
+        self.sms_send_twilio_phone_number.as_deref()
+    }
+
+    pub fn sms_send_twilio_account_sid(&self) -> Option<&str> {
+        self.sms_send_twilio_account_sid.as_deref()
+    }
+
+    pub fn sms_send_twilio_auth_token(&self) -> Option<&str> {
+        self.sms_send_twilio_auth_token.as_deref()
+    }
+
+    pub fn activation_time_start(&self) -> &Time {
+        &self.activation_time_start
+    }
+
+    pub fn activation_time_end(&self) -> Option<&Time> {
+        self.activation_time_end.as_ref()
     }
 }
 
@@ -77,20 +102,6 @@ impl<S: persistent_state::Storage<DeviceState>, M: BorrowMut<DeviceStateManager<
         })
     }
 
-    pub fn set_mode(&mut self, mode: Mode) -> Result<()> {
-        self.state_manager
-            .borrow_mut()
-            .update_state(|state| {
-                let mut state = state.clone();
-                state.set_mode(mode);
-
-                state
-            })
-            .map_err(|e| error!("{:?}", e))?;
-
-        Ok(())
-    }
-
     /// Subscribe to state changes, the callback will be called with the old and new state as arguments
     pub fn subscribe(
         &mut self,
@@ -99,25 +110,133 @@ impl<S: persistent_state::Storage<DeviceState>, M: BorrowMut<DeviceStateManager<
         self.state_manager.borrow_mut().subscribe(callback);
     }
 
-    pub fn set_name(&mut self, name: String) -> Result<()> {
+    fn update_state(&mut self, f: impl FnOnce(&DeviceState) -> DeviceState) -> Result<()> {
         self.state_manager
             .borrow_mut()
-            .update_state(|state| {
-                let mut state = state.clone();
-                state.name = name;
-                state
-            })
-            .map_err(|e| error!("{:?}", e))?;
-
-        Ok(())
+            .update_state(f)
+            .map_err(|e| error!("Error: {:?}", e))
     }
 
-    pub fn mode(&mut self) -> Mode {
-        self.state_manager.borrow_mut().state().mode()
+    pub fn sms_send_phone_number(&self) -> Option<&str> {
+        self.state_manager.borrow().state().sms_send_phone_number()
     }
 
-    pub fn name(&mut self) -> &str {
-        &self.state_manager.borrow_mut().state().name
+    pub fn set_sms_send_phone_number(&mut self, phone_number: &str) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.sms_send_phone_number = Some(phone_number.to_string());
+
+            c
+        })
+    }
+
+    pub fn sms_send_throttle(&self) -> u64 {
+        self.state_manager.borrow().state().sms_send_thottle()
+    }
+
+    pub fn set_sms_send_throttle(&mut self, throttle: u64) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.sms_send_throttle = throttle;
+            c
+        })
+    }
+
+    pub fn sms_send_twilio_phone_number(&self) -> Option<&str> {
+        self.state_manager
+            .borrow()
+            .state()
+            .sms_send_twilio_phone_number()
+    }
+
+    pub fn set_sms_send_twilio_phone_number(&mut self, phone_number: &str) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.sms_send_twilio_phone_number = Some(phone_number.to_string());
+            c
+        })
+    }
+
+    pub fn sms_send_twilio_account_sid(&self) -> Option<&str> {
+        self.state_manager
+            .borrow()
+            .state()
+            .sms_send_twilio_account_sid()
+    }
+
+    pub fn set_sms_send_twilio_account_sid(&mut self, account_sid: &str) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.sms_send_twilio_account_sid = Some(account_sid.to_string());
+            c
+        })
+    }
+
+    pub fn sms_send_twilio_auth_token(&self) -> Option<&str> {
+        self.state_manager
+            .borrow()
+            .state()
+            .sms_send_twilio_auth_token()
+    }
+
+    pub fn set_sms_send_twilio_auth_token(&mut self, auth_token: &str) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.sms_send_twilio_auth_token = Some(auth_token.to_string());
+            c
+        })
+    }
+
+    pub fn set_sms(
+        &mut self,
+        phone_number: Option<&str>,
+        throttle: u64,
+        twilio_phone_number: Option<&str>,
+        account_sid: Option<&str>,
+        auth_token: Option<&str>,
+    ) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.sms_send_phone_number = phone_number.map(|s| s.to_string());
+            c.sms_send_throttle = throttle;
+            c.sms_send_twilio_phone_number = twilio_phone_number.map(|s| s.to_string());
+            c.sms_send_twilio_account_sid = account_sid.map(|s| s.to_string());
+            c.sms_send_twilio_auth_token = auth_token.map(|s| s.to_string());
+            c
+        })
+    }
+
+    pub fn activation_time_start(&self) -> &Time {
+        self.state_manager.borrow().state().activation_time_start()
+    }
+
+    pub fn set_activation_time_start(&mut self, time_start: Time) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.activation_time_start = time_start;
+            c
+        })
+    }
+
+    pub fn activation_time_end(&self) -> Option<&Time> {
+        self.state_manager.borrow().state().activation_time_end()
+    }
+
+    pub fn set_activation_time_end(&mut self, time_end: Time) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.activation_time_end = Some(time_end);
+            c
+        })
+    }
+
+    pub fn set_activation(&mut self, time_start: &Time, time_end: &Time) -> result::Result<()> {
+        self.update_state(|state| {
+            let mut c = state.clone();
+            c.activation_time_start = *time_start;
+            c.activation_time_end = Some(*time_end);
+            c
+        })
     }
 }
 

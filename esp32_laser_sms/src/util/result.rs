@@ -1,5 +1,5 @@
 pub macro error($($arg:tt)*) {
-  eyre::eyre!($($arg)*)
+    eyre::eyre!($($arg)*)
 }
 
 pub type Result<T> = eyre::Result<T>;
@@ -13,5 +13,5 @@ pub macro bail($($arg:tt)*) {
 #[allow(non_snake_case)]
 #[inline(always)]
 pub fn Ok<T>(value: T) -> Result<T> {
-  std::result::Result::Ok(value)
+    std::result::Result::Ok(value)
 }
