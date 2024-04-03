@@ -11,6 +11,9 @@ constexpr auto SERVO_PIN = GPIO_NUM_12;
 constexpr auto AUTHORIZED_LED_PIN = GPIO_NUM_17;
 constexpr auto UNAUTHORIZED_LED_PIN = GPIO_NUM_16;
 constexpr auto BUZZER_PIN = GPIO_NUM_27;
+constexpr auto BUZZER_CHANNEL = 2;
+constexpr auto BUZZER_FREQ = 2000;
+constexpr auto BUZZER_RESOLUTION = 8;
 constexpr auto I2C_SDA_PIN = GPIO_NUM_26;
 constexpr auto I2C_SCL_PIN = GPIO_NUM_25;
 constexpr auto I2C_SLAVE_ADDRESS = 0x00;
@@ -29,15 +32,15 @@ Servo servo;
 auto isAuthorizedCard(const byte *uid) -> bool;
 
 auto unlockDoor(uint8_t solenoidPin, uint8_t authorizedLedPin,
-                uint8_t solenoidI2cAddr = 0,
-                Servo *servo = nullptr) -> void;
+                uint8_t solenoidI2cAddr,
+                Servo *servo,
+                uint8_t buzzerPin,
+                uint8_t buzzerChannel
+) -> void;
 
-auto playUnauthorizedCardMelody(uint64_t buzzerPin) -> void;
+auto playUnauthorizedCardMelody(uint8_t pin, uint8_t channel) -> void;
 
-auto playAuthorizedCardBeep(uint64_t buzzerPin) -> void;
-
-auto sweep(Servo *servo, int start, int end, uint8_t step = 1,
-           uint8_t delay_ms = 1) -> void;
+auto playAuthorizedCardBeep(uint8_t pin, uint8_t channel) -> void;
 
 auto sendI2Uint8(uint8_t data, uint8_t address) -> void {
     Wire.beginTransmission(address);
@@ -56,6 +59,7 @@ auto setup() -> void {
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
     servo.attach(SERVO_PIN);
     servo.write(0);
+    ledcSetup(BUZZER_CHANNEL, BUZZER_FREQ, BUZZER_RESOLUTION);
 }
 
 auto loop() -> void {
@@ -82,78 +86,74 @@ auto loop() -> void {
         rfid.PCD_StopCrypto1(); // stop encryption on PCD
         if (isAuthorizedCard(uidByte)) {
             Serial.println("Authorized card detected.");
-            unlockDoor(SOLENOID_PIN, AUTHORIZED_LED_PIN, I2C_SLAVE_ADDRESS,
-                       &servo);
+            unlockDoor(SOLENOID_PIN,
+                       AUTHORIZED_LED_PIN,
+                       I2C_SLAVE_ADDRESS,
+                       &servo,
+                       BUZZER_PIN,
+                       BUZZER_CHANNEL
+            );
         } else {
             Serial.println("Unauthorized card detected.");
-
             digitalWrite(UNAUTHORIZED_LED_PIN, HIGH);
-            tone(BUZZER_PIN, 100);
-            playUnauthorizedCardMelody(BUZZER_PIN);
-            noTone(BUZZER_PIN);
+            playUnauthorizedCardMelody(BUZZER_PIN, BUZZER_CHANNEL);
             digitalWrite(UNAUTHORIZED_LED_PIN, LOW);
-        }
-    }
-}
-
-auto sweep(Servo *servo, const int start, const int end,
-           const uint8_t step,
-           const uint8_t delay_ms) -> void {
-    if (servo == nullptr) {
-        return;
-    }
-
-    if (start < end) {
-        for (int pos = start; pos <= end; pos += step) {
-            servo->write(pos);
-            delay(delay_ms);
-        }
-    } else {
-        for (int pos = start; pos >= end; pos -= step) {
-            servo->write(pos);
-            delay(delay_ms);
         }
     }
 }
 
 auto
 unlockDoor(const uint8_t solenoidPin, const uint8_t authorizedLedPin,
-           const uint8_t solenoidI2cAddr, Servo *servo) -> void {
+           const uint8_t solenoidI2cAddr, Servo *servo,
+           const uint8_t buzzerPin,
+           const uint8_t buzzerChannel
+) -> void {
     digitalWrite(authorizedLedPin, HIGH);
     Serial.println("Door unlocked.");
     digitalWrite(solenoidPin, HIGH);
-    playAuthorizedCardBeep(BUZZER_PIN);
+    playAuthorizedCardBeep(buzzerPin, buzzerChannel);
     if (servo != nullptr) {
-        sweep(servo, 0, 90);
+        servo->write(90);
+        delay(1000);
     }
     if (solenoidI2cAddr != 0) {
         sendI2Uint8(1, solenoidI2cAddr);
     }
-    delay(5000);
+    delay(3000);
     if (solenoidI2cAddr != 0) {
         sendI2Uint8(0, solenoidI2cAddr);
     }
 
     if (servo != nullptr) {
-        sweep(servo, 90, 0);
+        servo->write(0);
+        delay(1000);
     }
     digitalWrite(solenoidPin, LOW);
     Serial.println("Door locked.");
     digitalWrite(authorizedLedPin, LOW);
 }
 
-auto playUnauthorizedCardMelody(const uint64_t buzzerPin) -> void {
+auto
+playUnauthorizedCardMelody(const uint8_t pin, const uint8_t channel) -> void {
+    ledcAttachPin(pin, channel);
     for (int i = 0; i < 3; i++) {
-        tone(buzzerPin, 3000);
-        delay(1000);
-        noTone(buzzerPin);
-        delay(1000);
+        ledcWrite(channel, 64);
+        delay(500);
+        ledcWrite(channel, 0);
+        delay(500);
     }
+    ledcWrite(channel, 0);
+    ledcDetachPin(pin);
 }
 
-auto playAuthorizedCardBeep(const uint64_t buzzerPin) -> void {
-    tone(buzzerPin, 3000, 1000);
+auto
+playAuthorizedCardBeep(const uint8_t pin, const uint8_t channel) -> void {
+    ledcAttachPin(pin, channel);
+    ledcWrite(channel, 96);
     delay(1000);
+    ledcWrite(channel, 0);
+    delay(1000);
+    ledcDetachPin(pin);
 }
 
 auto isAuthorizedCard(const byte *uid) -> bool {
