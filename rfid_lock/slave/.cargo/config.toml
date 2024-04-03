@@ -1,0 +1,35 @@
+[build]
+target = "xtensa-esp32-espidf"
+
+[target.xtensa-esp32-espidf]
+linker = "ldproxy"
+# runner = "espflash --monitor" # Select this runner for espflash v1.x.x
+runner = "espflash flash --monitor" # Select this runner for espflash v2.x.x
+rustflags = [
+    "--cfg",
+    "espidf_time64",
+    # Extending time_t for ESP IDF 5: https://github.com/esp-rs/rust/issues/110
+    "--cfg",
+    "mio_unsupported_force_poll_poll",
+]
+
+[unstable]
+build-std = ["std", "panic_abort"]
+
+[env]
+MCU = "esp32"
+# Note: this variable is not used by the pio builder (`cargo build --features pio`)
+ESP_IDF_VERSION = "v5.2.1"
+# Temporary patch for BLE_INIT: Malloc failed when running both WiFi and BLE
+#ESP_IDF_REPOSITORY = "https://github.com/cs-clarence/esp-idf.git"
+
+# These configurations will pick up your custom "sdkconfig.release", "sdkconfig.debug" or "sdkconfig.defaults[.*]" files
+# that you might put in the root of the project
+# The easiest way to generate a full "sdkconfig[.release|debug]" configuration (as opposed to manually enabling only the necessary flags via "sdkconfig.defaults[.*]"
+# is by running "cargo pio espidf menuconfig" (that is, if using the pio builder)
+#ESP_IDF_SDKCONFIG = { value = "./sdkconfig.release", relative = true }
+#ESP_IDF_SDKCONFIG = { value = "./sdkconfig.debug", relative = true }
+ESP_IDF_SDKCONFIG_DEFAULTS = { value = "./sdkconfig.defaults", relative = true }
+# ESP-IDF will be installed in ~/.espressif so it can be reused across the different examples.
+# See also https://github.com/esp-rs/esp-idf-sys#esp_idf_tools_install_dir-esp_idf_tools_install_dir
+ESP_IDF_TOOLS_INSTALL_DIR = { value = "global" }

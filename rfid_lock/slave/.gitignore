@@ -1,1 +1,4 @@
-.pio
+.embuild
+.vscode
+target
+Cargo.lock
