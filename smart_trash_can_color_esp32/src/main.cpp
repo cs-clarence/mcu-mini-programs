@@ -53,32 +53,31 @@ public:
     }
 };
 
+// Define the ultrasonic sensor pins
+constexpr int PAPER_TRIGGER_PIN = GPIO_NUM_14;
+constexpr int PAPER_ECHO_PIN = GPIO_NUM_12;
+constexpr int PLASTIC_TRIGGER_PIN = GPIO_NUM_4;
+constexpr int PLASTIC_ECHO_PIN = GPIO_NUM_0;
 
 // Define the servo pins
-constexpr int PAPER_SERVO_PIN = 2;
-constexpr int PLASTIC_SERVO_PIN = 3;
-
-// Define the ultrasonic sensor pins
-constexpr int PAPER_TRIGGER_PIN = 4;
-constexpr int PAPER_ECHO_PIN = 5;
-constexpr int PLASTIC_TRIGGER_PIN = 6;
-constexpr int PLASTIC_ECHO_PIN = 7;
+constexpr int PAPER_SERVO_PIN = GPIO_NUM_13;
+constexpr int PLASTIC_SERVO_PIN = GPIO_NUM_2;
 
 // Define the TCS3200 color sensor pins
-constexpr int CS1_S0_PIN = 9;
-constexpr int CS1_S1_PIN = 10;
-constexpr int CS1_S2_PIN = 11;
-constexpr int CS1_S3_PIN = 12;
-constexpr int CS1_OUT_PIN = 13;
-//constexpr int CS2_S0_PIN = 9;
-//constexpr int CS2_S1_PIN = 10;
-//constexpr int CS2_S2_PIN = 11;
-//constexpr int CS2_S3_PIN = 12;
-//constexpr int CS2_OUT_PIN = 13;
+constexpr int CS1_S0_PIN = GPIO_NUM_32;
+constexpr int CS1_S1_PIN = GPIO_NUM_33;
+constexpr int CS1_S2_PIN = GPIO_NUM_25;
+constexpr int CS1_S3_PIN = GPIO_NUM_26;
+constexpr int CS1_OUT_PIN = GPIO_NUM_27;
+constexpr int CS2_S0_PIN = GPIO_NUM_19;
+constexpr int CS2_S1_PIN = GPIO_NUM_18;
+constexpr int CS2_S2_PIN = GPIO_NUM_5;
+constexpr int CS2_S3_PIN = GPIO_NUM_17;
+constexpr int CS2_OUT_PIN = GPIO_NUM_16;
 
 // Defines the sensitivity of the color sensor
 constexpr uint8_t CS1_COLOR_SENSITIVITY = 5;
-//constexpr uint8_t CS2_COLOR_SENSITIVITY = 5;
+constexpr uint8_t CS2_COLOR_SENSITIVITY = 5;
 
 // Create servo objects
 Servo paperServo;
@@ -87,8 +86,8 @@ Servo plasticServo;
 // Create color sensor objects
 ColorSensor cs1(CS1_S0_PIN, CS1_S1_PIN, CS1_S2_PIN, CS1_S3_PIN, CS1_OUT_PIN,
                 CS1_COLOR_SENSITIVITY);
-//ColorSensor cs2(CS2_S0_PIN, CS2_S1_PIN, CS2_S2_PIN, CS2_S3_PIN, CS2_OUT_PIN,
-//                CS2_COLOR_SENSITIVITY);
+ColorSensor cs2(CS2_S0_PIN, CS2_S1_PIN, CS2_S2_PIN, CS2_S3_PIN, CS2_OUT_PIN,
+                CS2_COLOR_SENSITIVITY);
 
 // Define the maximum distance for considering the trash can as full
 constexpr int MAX_DISTANCE = 10; // in cm
@@ -148,38 +147,37 @@ void loop() {
         Serial.println(" }, ");
     };
 
-    const auto isPaper = isColorPaper(red, green, blue);
-    const auto isPlastic = isColorPlastic(red, green, blue);
 
-    if (isPaper || isPlastic) {
-        if (isPaper) {
-            Serial.print("Paper detected: ");
-            logRgbValues();
+    if (isColorPaper(red, green, blue)) {
+        Serial.print("Paper detected: ");
+        logRgbValues();
 
-            // Check if the paper trash can is not full
-            if (getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN) > MAX_DISTANCE) {
-                openLid(paperServo); // Open the lid for paper
-            } else {
-                Serial.println("Paper trash can is full");
-            }
+        // Check if the paper trash can is not full
+        if (getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN) > MAX_DISTANCE) {
+            openLid(paperServo); // Open the lid for paper
+        } else {
+            Serial.println("Paper trash can is full");
         }
-
-        if (isPlastic) {
-            Serial.print("Plastic detected: ");
-            logRgbValues();
-
-            // Check if the plastic trash can is not full
-            if (getDistance(PLASTIC_TRIGGER_PIN, PLASTIC_ECHO_PIN) >
-                MAX_DISTANCE) {
-                openLid(plasticServo); // Open the lid for plastic
-            } else {
-                Serial.println("Plastic trash can is full");
-            }
-        }
-        // Check if the detected color matches known paper or plastic colors
     } else {
-        // Unrecognized color
-        Serial.print("Unrecognized color: ");
+        Serial.print("Unknown paper color detected: ");
+        logRgbValues();
+    }
+
+    cs2.read(red, green, blue);
+
+    if (isColorPlastic(red, green, blue)) {
+        Serial.print("Plastic detected: ");
+        logRgbValues();
+
+        // Check if the plastic trash can is not full
+        if (getDistance(PLASTIC_TRIGGER_PIN, PLASTIC_ECHO_PIN) >
+            MAX_DISTANCE) {
+            openLid(plasticServo); // Open the lid for plastic
+        } else {
+            Serial.println("Plastic trash can is full");
+        }
+    } else {
+        Serial.print("Unknown plastic color detected: ");
         logRgbValues();
     }
 
