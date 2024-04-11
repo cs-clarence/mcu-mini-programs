@@ -10,17 +10,10 @@ private:
     uint8_t s3;
     uint8_t out;
 
-    uint8_t sensitivity;
-
-    void setSensitivity(uint8_t value) {
-        sensitivity = value;
-    }
 
 public:
-    ColorSensor(uint8_t s0, uint8_t s1, uint8_t s2, uint8_t s3, uint8_t out,
-                uint8_t sensitivity = 5) :
-        s0{s0}, s1{s1}, s2{s2}, s3{s3}, out{out}, sensitivity{sensitivity} {
-
+    ColorSensor(uint8_t s0, uint8_t s1, uint8_t s2, uint8_t s3, uint8_t out) :
+        s0{s0}, s1{s1}, s2{s2}, s3{s3}, out{out} {
         // Set the TCS3200 color sensor pins
         pinMode(s0, OUTPUT);
         pinMode(s1, OUTPUT);
@@ -76,18 +69,16 @@ constexpr int CS2_S3_PIN = GPIO_NUM_17;
 constexpr int CS2_OUT_PIN = GPIO_NUM_16;
 
 // Defines the sensitivity of the color sensor
-constexpr uint8_t CS1_COLOR_SENSITIVITY = 5;
-constexpr uint8_t CS2_COLOR_SENSITIVITY = 5;
+constexpr uint8_t CS1_SENSITIVITY = 5;
+constexpr uint8_t CS2_SENSITIVITY = 5;
 
 // Create servo objects
 Servo paperServo;
 Servo plasticServo;
 
 // Create color sensor objects
-ColorSensor cs1(CS1_S0_PIN, CS1_S1_PIN, CS1_S2_PIN, CS1_S3_PIN, CS1_OUT_PIN,
-                CS1_COLOR_SENSITIVITY);
-ColorSensor cs2(CS2_S0_PIN, CS2_S1_PIN, CS2_S2_PIN, CS2_S3_PIN, CS2_OUT_PIN,
-                CS2_COLOR_SENSITIVITY);
+ColorSensor cs1(CS1_S0_PIN, CS1_S1_PIN, CS1_S2_PIN, CS1_S3_PIN, CS1_OUT_PIN);
+ColorSensor cs2(CS2_S0_PIN, CS2_S1_PIN, CS2_S2_PIN, CS2_S3_PIN, CS2_OUT_PIN);
 
 // Define the maximum distance for considering the trash can as full
 constexpr int MAX_DISTANCE = 10; // in cm
@@ -109,13 +100,14 @@ void openLid(Servo &servo);
 
 uint64_t getDistance(int triggerPin, int echoPin);
 
-bool isColorPaper(uint16_t r, uint16_t g, uint16_t b);
+bool isColorPaper(uint16_t r, uint16_t g, uint16_t b, uint8_t sensitivity = 5);
 
-bool isColorPlastic(uint16_t r, uint16_t g, uint16_t b);
+bool
+isColorPlastic(uint16_t r, uint16_t g, uint16_t b, uint8_t sensitivity = 5);
 
 void setup() {
     // Initialize serial communication
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     // Attach the servos to their respective pins
     paperServo.attach(PAPER_SERVO_PIN);
@@ -137,7 +129,7 @@ void loop() {
     uint16_t red, green, blue;
     cs1.read(red, green, blue);
 
-    const auto logRgbValues = [=] {
+    const auto logRgbValues = [&] {
         Serial.print("RGB Values: { ");
         Serial.print(red);
         Serial.print(", ");
@@ -148,7 +140,7 @@ void loop() {
     };
 
 
-    if (isColorPaper(red, green, blue)) {
+    if (isColorPaper(red, green, blue, CS1_SENSITIVITY)) {
         Serial.print("Paper detected: ");
         logRgbValues();
 
@@ -165,7 +157,7 @@ void loop() {
 
     cs2.read(red, green, blue);
 
-    if (isColorPlastic(red, green, blue)) {
+    if (isColorPlastic(red, green, blue, CS2_SENSITIVITY)) {
         Serial.print("Plastic detected: ");
         logRgbValues();
 
@@ -207,28 +199,29 @@ uint64_t getDistance(int triggerPin, int echoPin) {
     return distance;
 }
 
-bool isColorPaper(uint16_t r, uint16_t g, uint16_t b) {
+bool isColorPaper(uint16_t r, uint16_t g, uint16_t b, uint8_t sensitivity) {
     for (const auto &color: PAPER_COLORS) {
-        if (r >= color[0] - CS1_COLOR_SENSITIVITY &&
-            r <= color[0] + CS1_COLOR_SENSITIVITY &&
-            g >= color[1] - CS1_COLOR_SENSITIVITY &&
-            g <= color[1] + CS1_COLOR_SENSITIVITY &&
-            b >= color[2] - CS1_COLOR_SENSITIVITY &&
-            b <= color[2] + CS1_COLOR_SENSITIVITY) {
+        if (r >= color[0] - sensitivity &&
+            r <= color[0] + sensitivity &&
+            g >= color[1] - sensitivity &&
+            g <= color[1] + sensitivity &&
+            b >= color[2] - sensitivity &&
+            b <= color[2] + sensitivity) {
             return true;
         }
     }
     return false;
 }
 
-bool isColorPlastic(uint16_t r, uint16_t g, uint16_t b) {
+bool
+isColorPlastic(uint16_t r, uint16_t g, uint16_t b, uint8_t sensitivity) {
     for (const auto &color: PLASTIC_COLORS) {
-        if (r >= color[0] - CS1_COLOR_SENSITIVITY &&
-            r <= color[0] + CS1_COLOR_SENSITIVITY &&
-            g >= color[1] - CS1_COLOR_SENSITIVITY &&
-            g <= color[1] + CS1_COLOR_SENSITIVITY &&
-            b >= color[2] - CS1_COLOR_SENSITIVITY &&
-            b <= color[2] + CS1_COLOR_SENSITIVITY) {
+        if (r >= color[0] - sensitivity &&
+            r <= color[0] + sensitivity &&
+            g >= color[1] - sensitivity &&
+            g <= color[1] + sensitivity &&
+            b >= color[2] - sensitivity &&
+            b <= color[2] + sensitivity) {
             return true;
         }
     }
