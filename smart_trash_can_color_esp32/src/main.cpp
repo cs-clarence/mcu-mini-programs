@@ -50,11 +50,11 @@ public:
 constexpr int PAPER_TRIGGER_PIN = GPIO_NUM_14;
 constexpr int PAPER_ECHO_PIN = GPIO_NUM_12;
 constexpr int PLASTIC_TRIGGER_PIN = GPIO_NUM_4;
-constexpr int PLASTIC_ECHO_PIN = GPIO_NUM_0;
+constexpr int PLASTIC_ECHO_PIN = GPIO_NUM_2;
 
 // Define the servo pins
 constexpr int PAPER_SERVO_PIN = GPIO_NUM_13;
-constexpr int PLASTIC_SERVO_PIN = GPIO_NUM_2;
+constexpr int PLASTIC_SERVO_PIN = GPIO_NUM_15;
 
 // Define the TCS3200 color sensor pins
 constexpr int CS1_S0_PIN = GPIO_NUM_32;
@@ -86,13 +86,22 @@ constexpr int MAX_DISTANCE = 10; // in cm
 
 // Define the colors for paper and plastic
 constexpr int16_t PAPER_COLORS[][3] = {
-    {36, 36, 30},
-    {23, 26, 24}
+    {8,  8,  7},
+    {14, 19, 19},
+    {23, 29, 28},
+    {18, 19, 21},
+    {17, 20, 22},
+    {37, 35, 36},
+    {30, 36, 34},
+    {19, 24, 23},
 };
 
 constexpr int16_t PLASTIC_COLORS[][3] = {
-    {8,  8,  7},
-    {10, 23, 20}
+    {36, 36, 30},
+    {44, 29, 37},
+    {29, 15, 24},
+    {3, 4, 10},
+    {14, 13, 10},
 };
 
 // Forward declarations
