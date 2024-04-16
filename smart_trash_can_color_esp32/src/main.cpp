@@ -51,6 +51,7 @@ constexpr int PAPER_TRIGGER_PIN = GPIO_NUM_14;
 constexpr int PAPER_ECHO_PIN = GPIO_NUM_12;
 constexpr int PLASTIC_TRIGGER_PIN = GPIO_NUM_4;
 constexpr int PLASTIC_ECHO_PIN = GPIO_NUM_2;
+constexpr bool ULTRASONIC_ENABLED = true;
 
 // Define the servo pins
 constexpr int PAPER_SERVO_PIN = GPIO_NUM_13;
@@ -69,8 +70,8 @@ constexpr int CS2_S3_PIN = GPIO_NUM_17;
 constexpr int CS2_OUT_PIN = GPIO_NUM_16;
 
 // Defines the sensitivity of the color sensor
-constexpr uint8_t CS1_SENSITIVITY = 5;
-constexpr uint8_t CS2_SENSITIVITY = 5;
+constexpr uint8_t CS1_SENSITIVITY = 3;
+constexpr uint8_t CS2_SENSITIVITY = 3;
 
 // Create servo objects
 Servo paperServo;
@@ -100,7 +101,7 @@ constexpr int16_t PLASTIC_COLORS[][3] = {
     {36, 36, 30},
     {44, 29, 37},
     {29, 15, 24},
-    {3, 4, 10},
+    {3,  4,  10},
     {14, 13, 10},
 };
 
@@ -154,7 +155,8 @@ void loop() {
         logRgbValues();
 
         // Check if the paper trash can is not full
-        if (getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN) > MAX_DISTANCE) {
+        if ((getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN) > MAX_DISTANCE) ||
+            !ULTRASONIC_ENABLED) {
             openLid(paperServo); // Open the lid for paper
         } else {
             Serial.println("Paper trash can is full");
@@ -171,8 +173,8 @@ void loop() {
         logRgbValues();
 
         // Check if the plastic trash can is not full
-        if (getDistance(PLASTIC_TRIGGER_PIN, PLASTIC_ECHO_PIN) >
-            MAX_DISTANCE) {
+        if ((getDistance(PLASTIC_TRIGGER_PIN, PLASTIC_ECHO_PIN) >
+             MAX_DISTANCE) || !ULTRASONIC_ENABLED) {
             openLid(plasticServo); // Open the lid for plastic
         } else {
             Serial.println("Plastic trash can is full");
