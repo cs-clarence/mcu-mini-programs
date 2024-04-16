@@ -51,7 +51,7 @@ constexpr int PAPER_TRIGGER_PIN = GPIO_NUM_14;
 constexpr int PAPER_ECHO_PIN = GPIO_NUM_12;
 constexpr int PLASTIC_TRIGGER_PIN = GPIO_NUM_4;
 constexpr int PLASTIC_ECHO_PIN = GPIO_NUM_2;
-constexpr bool ULTRASONIC_ENABLED = true;
+constexpr bool ULTRASONIC_ENABLED = false;
 
 // Define the servo pins
 constexpr int PAPER_SERVO_PIN = GPIO_NUM_13;
@@ -154,12 +154,21 @@ void loop() {
         Serial.print("Paper detected: ");
         logRgbValues();
 
+        auto distance = getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN);
+        Serial.print("Distance: ");
+        Serial.println(distance);
+        bool paperFull =
+            getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN) <= MAX_DISTANCE;
         // Check if the paper trash can is not full
-        if ((getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN) > MAX_DISTANCE) ||
-            !ULTRASONIC_ENABLED) {
-            openLid(paperServo); // Open the lid for paper
-        } else {
+        if (paperFull) {
             Serial.println("Paper trash can is full");
+        } else {
+            Serial.println("Paper trash can is not full");
+        }
+
+        if (!paperFull || !ULTRASONIC_ENABLED) {
+            Serial.println("Opening paper lid");
+            openLid(paperServo); // Open the lid for paper
         }
     } else {
         Serial.print("Unknown paper color detected: ");
@@ -172,12 +181,21 @@ void loop() {
         Serial.print("Plastic detected: ");
         logRgbValues();
 
+        auto distance = getDistance(PLASTIC_TRIGGER_PIN, PLASTIC_ECHO_PIN);
+        Serial.print("Distance: ");
+        Serial.println(distance);
+        bool plasticFull =
+            distance <= MAX_DISTANCE;
         // Check if the plastic trash can is not full
-        if ((getDistance(PLASTIC_TRIGGER_PIN, PLASTIC_ECHO_PIN) >
-             MAX_DISTANCE) || !ULTRASONIC_ENABLED) {
-            openLid(plasticServo); // Open the lid for plastic
-        } else {
+        if (plasticFull) {
             Serial.println("Plastic trash can is full");
+        } else {
+            Serial.println("Plastic trash can is not full");
+        }
+
+        if (!plasticFull || !ULTRASONIC_ENABLED) {
+            Serial.println("Opening plastic lid");
+            openLid(plasticServo); // Open the lid for plastic
         }
     } else {
         Serial.print("Unknown plastic color detected: ");
