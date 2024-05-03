@@ -38,9 +38,18 @@ auto unlockDoor(uint8_t solenoidPin, uint8_t authorizedLedPin,
                 uint8_t buzzerChannel
 ) -> void;
 
+auto lockDoor(uint8_t solenoidPin, uint8_t authorizedLedPin,
+                uint8_t solenoidI2cAddr,
+                Servo *servo,
+                uint8_t buzzerPin,
+                uint8_t buzzerChannel
+) -> void;
+
 auto playUnauthorizedCardMelody(uint8_t pin, uint8_t channel) -> void;
 
 auto playAuthorizedCardBeep(uint8_t pin, uint8_t channel) -> void;
+
+auto findAuthorizedCardIndex(const byte *uid, std::size_t &index) -> bool;
 
 auto sendI2Uint8(uint8_t data, uint8_t address) -> void {
     Wire.beginTransmission(address);
@@ -61,6 +70,9 @@ auto setup() -> void {
     servo.write(0);
     ledcSetup(BUZZER_CHANNEL, BUZZER_FREQ, BUZZER_RESOLUTION);
 }
+
+bool isOpen = false;
+std::size_t lastCardIndex = 0;
 
 auto loop() -> void {
     auto isCardPresent = rfid.PICC_IsNewCardPresent();
@@ -86,13 +98,31 @@ auto loop() -> void {
         rfid.PCD_StopCrypto1(); // stop encryption on PCD
         if (isAuthorizedCard(uidByte)) {
             Serial.println("Authorized card detected.");
-            unlockDoor(SOLENOID_PIN,
-                       AUTHORIZED_LED_PIN,
-                       I2C_SLAVE_ADDRESS,
-                       &servo,
-                       BUZZER_PIN,
-                       BUZZER_CHANNEL
-            );
+
+            if (isOpen) {
+                lockDoor(SOLENOID_PIN,
+                           AUTHORIZED_LED_PIN,
+                           I2C_SLAVE_ADDRESS,
+                           &servo,
+                           BUZZER_PIN,
+                           BUZZER_CHANNEL
+                );
+                isOpen = false;
+            } else {
+                if (findAuthorizedCardIndex(uidByte, lastCardIndex)) {
+                    Serial.println("Authorized card detected.");
+                }
+
+                unlockDoor(SOLENOID_PIN,
+                           AUTHORIZED_LED_PIN,
+                           I2C_SLAVE_ADDRESS,
+                           &servo,
+                           BUZZER_PIN,
+                           BUZZER_CHANNEL
+                );
+                isOpen = true;
+            }
+
         } else {
             Serial.println("Unauthorized card detected.");
             digitalWrite(UNAUTHORIZED_LED_PIN, HIGH);
@@ -119,7 +149,14 @@ unlockDoor(const uint8_t solenoidPin, const uint8_t authorizedLedPin,
     if (solenoidI2cAddr != 0) {
         sendI2Uint8(1, solenoidI2cAddr);
     }
-    delay(3000);
+}
+
+auto
+lockDoor(const uint8_t solenoidPin, const uint8_t authorizedLedPin,
+         const uint8_t solenoidI2cAddr, Servo *servo,
+         const uint8_t buzzerPin,
+         const uint8_t buzzerChannel) -> void {
+    playAuthorizedCardBeep(buzzerPin, buzzerChannel);
     if (solenoidI2cAddr != 0) {
         sendI2Uint8(0, solenoidI2cAddr);
     }
@@ -132,6 +169,7 @@ unlockDoor(const uint8_t solenoidPin, const uint8_t authorizedLedPin,
     Serial.println("Door locked.");
     digitalWrite(authorizedLedPin, LOW);
 }
+
 
 auto
 playUnauthorizedCardMelody(const uint8_t pin, const uint8_t channel) -> void {
@@ -169,5 +207,28 @@ auto isAuthorizedCard(const byte *uid) -> bool {
             return true;
         }
     }
+    return false;
+}
+
+auto findAuthorizedCardIndex(const byte *uid, std::size_t &index) -> bool {
+    constexpr std::size_t AUTHORIZED_SIZED_CARDS =
+        sizeof(authorizedCards) / sizeof(authorizedCards[0]);
+
+    for (std::size_t i = 0; i < AUTHORIZED_SIZED_CARDS; i++) {
+        bool match = true;
+
+        for (int j = 0; j < 4; j++) {
+            if (uid[j] != authorizedCards[i][j]) {
+                match = false;
+                break;
+            }
+        }
+
+        if (match) {
+            index = i;
+            return true;
+        }
+    }
+
     return false;
 }
