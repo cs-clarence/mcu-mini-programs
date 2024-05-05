@@ -58,28 +58,30 @@ constexpr int PAPER_SERVO_PIN = GPIO_NUM_13;
 constexpr int PLASTIC_SERVO_PIN = GPIO_NUM_15;
 
 // Define the TCS3200 color sensor pins
-constexpr int CS1_S0_PIN = GPIO_NUM_32;
-constexpr int CS1_S1_PIN = GPIO_NUM_33;
-constexpr int CS1_S2_PIN = GPIO_NUM_25;
-constexpr int CS1_S3_PIN = GPIO_NUM_26;
-constexpr int CS1_OUT_PIN = GPIO_NUM_27;
-constexpr int CS2_S0_PIN = GPIO_NUM_19;
-constexpr int CS2_S1_PIN = GPIO_NUM_18;
-constexpr int CS2_S2_PIN = GPIO_NUM_5;
-constexpr int CS2_S3_PIN = GPIO_NUM_17;
-constexpr int CS2_OUT_PIN = GPIO_NUM_16;
+constexpr int PAPER_CS_S0_PIN = GPIO_NUM_32;
+constexpr int PAPER_CS_S1_PIN = GPIO_NUM_33;
+constexpr int PAPER_CS_S2_PIN = GPIO_NUM_25;
+constexpr int PAPER_CS_S3_PIN = GPIO_NUM_26;
+constexpr int PAPER_CS_OUT_PIN = GPIO_NUM_27;
+constexpr int PLASTIC_CS_S0_PIN = GPIO_NUM_19;
+constexpr int PLASTIC_CS_S1_PIN = GPIO_NUM_18;
+constexpr int PLASTIC_CS_S2_PIN = GPIO_NUM_5;
+constexpr int PLASTIC_CS_S3_PIN = GPIO_NUM_17;
+constexpr int PLASTIC_CS_OUT_PIN = GPIO_NUM_16;
 
 // Defines the sensitivity of the color sensor
-constexpr uint8_t CS1_SENSITIVITY = 3;
-constexpr uint8_t CS2_SENSITIVITY = 3;
+constexpr uint8_t PAPER_CS_SENSITIVITY = 3;
+constexpr uint8_t PLASTIC_CS_SENSITIVITY = 3;
 
 // Create servo objects
 Servo paperServo;
 Servo plasticServo;
 
 // Create color sensor objects
-ColorSensor cs1(CS1_S0_PIN, CS1_S1_PIN, CS1_S2_PIN, CS1_S3_PIN, CS1_OUT_PIN);
-ColorSensor cs2(CS2_S0_PIN, CS2_S1_PIN, CS2_S2_PIN, CS2_S3_PIN, CS2_OUT_PIN);
+ColorSensor paperCs(PAPER_CS_S0_PIN, PAPER_CS_S1_PIN, PAPER_CS_S2_PIN,
+                    PAPER_CS_S3_PIN, PAPER_CS_OUT_PIN);
+ColorSensor plasticCs(PLASTIC_CS_S0_PIN, PLASTIC_CS_S1_PIN, PLASTIC_CS_S2_PIN,
+                      PLASTIC_CS_S3_PIN, PLASTIC_CS_OUT_PIN);
 
 // Define the maximum distance for considering the trash can as full
 constexpr int MAX_DISTANCE = 10; // in cm
@@ -137,7 +139,7 @@ void setup() {
 void loop() {
     // Read the color values from the TCS3200 sensor
     uint16_t red, green, blue;
-    cs1.read(red, green, blue);
+    paperCs.read(red, green, blue);
 
     const auto logRgbValues = [&] {
         Serial.print("RGB Values: { ");
@@ -150,7 +152,7 @@ void loop() {
     };
 
 
-    if (isColorPaper(red, green, blue, CS1_SENSITIVITY)) {
+    if (isColorPaper(red, green, blue, PAPER_CS_SENSITIVITY)) {
         Serial.print("Paper detected: ");
         logRgbValues();
 
@@ -175,9 +177,9 @@ void loop() {
         logRgbValues();
     }
 
-    cs2.read(red, green, blue);
+    plasticCs.read(red, green, blue);
 
-    if (isColorPlastic(red, green, blue, CS2_SENSITIVITY)) {
+    if (isColorPlastic(red, green, blue, PLASTIC_CS_SENSITIVITY)) {
         Serial.print("Plastic detected: ");
         logRgbValues();
 
@@ -201,8 +203,6 @@ void loop() {
         Serial.print("Unknown plastic color detected: ");
         logRgbValues();
     }
-
-    delay(1000);
 }
 
 void openLid(Servo &servo) {
