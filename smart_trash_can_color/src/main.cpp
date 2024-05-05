@@ -2,43 +2,90 @@
 #include <Arduino.h>
 #include <Servo.h>
 
-// Define the servo pins
-constexpr int PAPER_SERVO_PIN = 2;
-constexpr int PLASTIC_SERVO_PIN = 3;
+class ColorSensor {
+private:
+    uint8_t s0;
+    uint8_t s1;
+    uint8_t s2;
+    uint8_t s3;
+    uint8_t out;
+
+
+public:
+    ColorSensor(uint8_t s0, uint8_t s1, uint8_t s2, uint8_t s3, uint8_t out) :
+        s0{s0}, s1{s1}, s2{s2}, s3{s3}, out{out} {
+        // Set the TCS3200 color sensor pins
+        pinMode(s0, OUTPUT);
+        pinMode(s1, OUTPUT);
+        pinMode(s2, OUTPUT);
+        pinMode(s3, OUTPUT);
+        pinMode(out, INPUT);
+
+        // Configure the TCS3200 color sensor
+        digitalWrite(s0, HIGH);
+        digitalWrite(s1, HIGH);
+    }
+
+    void read(uint16_t &r, uint16_t &g, uint16_t &b) const {
+        // Configure the TCS3200 color sensor
+        digitalWrite(s2, LOW);
+        digitalWrite(s3, LOW);
+
+        // Read the red value
+        r = pulseIn(out, digitalRead(out) == LOW ? HIGH : LOW);
+
+        // Read the green value
+        digitalWrite(s2, HIGH);
+        digitalWrite(s3, HIGH);
+        g = pulseIn(out, digitalRead(out) == LOW ? HIGH : LOW);
+
+        // Read the blue value
+        digitalWrite(s2, LOW);
+        digitalWrite(s3, HIGH);
+        b = pulseIn(out, digitalRead(out) == LOW ? HIGH : LOW);
+    }
+};
 
 // Define the ultrasonic sensor pins
-constexpr int PAPER_TRIGGER_PIN = 4;
-constexpr int PAPER_ECHO_PIN = 5;
-constexpr int PLASTIC_TRIGGER_PIN = 6;
-constexpr int PLASTIC_ECHO_PIN = 7;
+constexpr int PAPER_TRIGGER_PIN = 7;
+constexpr int PAPER_ECHO_PIN = 8;
+constexpr bool ULTRASONIC_ENABLED = false;
+
+// Define the servo pins
+constexpr int PAPER_SERVO_PIN = 9;
 
 // Define the TCS3200 color sensor pins
-constexpr int S0_PIN = 9;
-constexpr int S1_PIN = 10;
-constexpr int S2_PIN = 11;
-constexpr int S3_PIN = 12;
-constexpr int OUT_PIN = 13;
+constexpr int PAPER_CS_S0_PIN = 2;
+constexpr int PAPER_CS_S1_PIN = 3;
+constexpr int PAPER_CS_S2_PIN = 4;
+constexpr int PAPER_CS_S3_PIN = 5;
+constexpr int PAPER_CS_OUT_PIN = 6;
 
+// Defines the sensitivity of the color sensor
+constexpr uint8_t PAPER_CS_SENSITIVITY = 3;
 
 // Create servo objects
 Servo paperServo;
 Servo plasticServo;
 
-// Define the maximum distance for considering the trash can as full
-constexpr int MAX_DISTANCE = 10; // in cm
+// Create color sensor objects
+ColorSensor paperCs(PAPER_CS_S0_PIN, PAPER_CS_S1_PIN, PAPER_CS_S2_PIN,
+                    PAPER_CS_S3_PIN, PAPER_CS_OUT_PIN);
 
-// Defines the sensitivity of the color sensor
-constexpr uint8_t COLOR_SENSITIVITY = 5;
+// Define the maximum distance for considering the trash can as full
+constexpr int MIN_DISTANCE = 10; // in cm
+
 
 // Define the colors for paper and plastic
-constexpr int32_t PAPER_COLORS[][3] = {
-    {36, 36, 30},
-    {23, 26, 24}
-};
-
-constexpr int32_t PLASTIC_COLORS[][3] = {
-    {8, 8, 7},
-    {10, 23, 20}
+constexpr int16_t PAPER_COLORS[][3] = {
+    {8,  8,  7},
+    {14, 19, 19},
+    {23, 29, 28},
+    {18, 19, 21},
+    {17, 20, 22},
+    {37, 35, 36},
+    {30, 36, 34},
+    {19, 24, 23},
 };
 
 // Forward declarations
@@ -46,20 +93,14 @@ void openLid(Servo &servo);
 
 uint64_t getDistance(int triggerPin, int echoPin);
 
-void readColor(uint16_t &r, uint16_t &g, uint16_t &b);
-
-bool isColorPaper(uint16_t r, uint16_t g, uint16_t b);
-
-bool isColorPlastic(uint16_t r, uint16_t g, uint16_t b);
+bool isColorPaper(uint16_t r, uint16_t g, uint16_t b, uint8_t sensitivity = 5);
 
 void setup() {
     // Initialize serial communication
-    Serial.begin(9600);
-
+    Serial.begin(115200);
 
     // Attach the servos to their respective pins
     paperServo.attach(PAPER_SERVO_PIN);
-    plasticServo.attach(PLASTIC_SERVO_PIN);
 
     // Set the servos to their initial positions
     paperServo.write(0);
@@ -68,28 +109,14 @@ void setup() {
     // Set the ultrasonic sensor pins
     pinMode(PAPER_TRIGGER_PIN, OUTPUT);
     pinMode(PAPER_ECHO_PIN, INPUT);
-    pinMode(PLASTIC_TRIGGER_PIN, OUTPUT);
-    pinMode(PLASTIC_ECHO_PIN, INPUT);
-
-    // Set the TCS3200 color sensor pins
-    pinMode(S0_PIN, OUTPUT);
-    pinMode(S1_PIN, OUTPUT);
-    pinMode(S2_PIN, OUTPUT);
-    pinMode(S3_PIN, OUTPUT);
-    pinMode(OUT_PIN, INPUT);
-
-    // Configure the TCS3200 color sensor
-    digitalWrite(S0_PIN, HIGH);
-    digitalWrite(S1_PIN, HIGH);
-
 }
 
 void loop() {
     // Read the color values from the TCS3200 sensor
     uint16_t red, green, blue;
-    readColor(red, green, blue);
+    paperCs.read(red, green, blue);
 
-    const auto logRgbValues = [red, green, blue] {
+    const auto logRgbValues = [&] {
         Serial.print("RGB Values: { ");
         Serial.print(red);
         Serial.print(", ");
@@ -99,42 +126,28 @@ void loop() {
         Serial.println(" }, ");
     };
 
-    const auto isPaper = isColorPaper(red, green, blue);
-    const auto isPlastic = isColorPlastic(red, green, blue);
 
-    if (isPaper || isPlastic) {
-        if (isPaper) {
-            Serial.print("Paper detected: ");
-            logRgbValues();
+    if (isColorPaper(red, green, blue, PAPER_CS_SENSITIVITY)) {
+        Serial.print("Paper detected: ");
+        logRgbValues();
 
-            // Check if the paper trash can is not full
-            if (getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN) > MAX_DISTANCE) {
-                openLid(paperServo); // Open the lid for paper
-            } else {
-                Serial.println("Paper trash can is full");
-            }
+        auto distance = getDistance(PAPER_TRIGGER_PIN, PAPER_ECHO_PIN);
+        bool paperFull = distance <= MIN_DISTANCE;
+        // Check if the paper trash can is not full
+        if (paperFull) {
+            Serial.println("Paper trash can is full");
+        } else {
+            Serial.println("Paper trash can is not full");
         }
 
-        if (isPlastic) {
-            Serial.print("Plastic detected: ");
-            logRgbValues();
-
-            // Check if the plastic trash can is not full
-            if (getDistance(PLASTIC_TRIGGER_PIN, PLASTIC_ECHO_PIN) >
-                MAX_DISTANCE) {
-                openLid(plasticServo); // Open the lid for plastic
-            } else {
-                Serial.println("Plastic trash can is full");
-            }
+        if (!paperFull || !ULTRASONIC_ENABLED) {
+            Serial.println("Opening paper lid");
+            openLid(paperServo); // Open the lid for paper
         }
-        // Check if the detected color matches known paper or plastic colors
     } else {
-        // Unrecognized color
-        Serial.print("Unrecognized color: ");
+        Serial.print("Unknown paper color detected: ");
         logRgbValues();
     }
-
-    delay(1000);
 }
 
 void openLid(Servo &servo) {
@@ -160,47 +173,14 @@ uint64_t getDistance(int triggerPin, int echoPin) {
     return distance;
 }
 
-void readColor(uint16_t &r, uint16_t &g, uint16_t &b) {
-    // Configure the TCS3200 color sensor
-    digitalWrite(S2_PIN, LOW);
-    digitalWrite(S3_PIN, LOW);
-
-    // Read the red value
-    r = pulseIn(OUT_PIN, digitalRead(OUT_PIN) == LOW ? HIGH : LOW);
-
-    // Read the green value
-    digitalWrite(S2_PIN, HIGH);
-    digitalWrite(S3_PIN, HIGH);
-    g = pulseIn(OUT_PIN, digitalRead(OUT_PIN) == LOW ? HIGH : LOW);
-
-    // Read the blue value
-    digitalWrite(S2_PIN, LOW);
-    digitalWrite(S3_PIN, HIGH);
-    b = pulseIn(OUT_PIN, digitalRead(OUT_PIN) == LOW ? HIGH : LOW);
-}
-
-bool isColorPaper(uint16_t r, uint16_t g, uint16_t b) {
+bool isColorPaper(uint16_t r, uint16_t g, uint16_t b, uint8_t sensitivity) {
     for (const auto &color: PAPER_COLORS) {
-        if (r >= color[0] - COLOR_SENSITIVITY &&
-            r <= color[0] + COLOR_SENSITIVITY &&
-            g >= color[1] - COLOR_SENSITIVITY &&
-            g <= color[1] + COLOR_SENSITIVITY &&
-            b >= color[2] - COLOR_SENSITIVITY &&
-            b <= color[2] + COLOR_SENSITIVITY) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool isColorPlastic(uint16_t r, uint16_t g, uint16_t b) {
-    for (const auto &color: PLASTIC_COLORS) {
-        if (r >= color[0] - COLOR_SENSITIVITY &&
-            r <= color[0] + COLOR_SENSITIVITY &&
-            g >= color[1] - COLOR_SENSITIVITY &&
-            g <= color[1] + COLOR_SENSITIVITY &&
-            b >= color[2] - COLOR_SENSITIVITY &&
-            b <= color[2] + COLOR_SENSITIVITY) {
+        if (r >= color[0] - sensitivity &&
+            r <= color[0] + sensitivity &&
+            g >= color[1] - sensitivity &&
+            g <= color[1] + sensitivity &&
+            b >= color[2] - sensitivity &&
+            b <= color[2] + sensitivity) {
             return true;
         }
     }
