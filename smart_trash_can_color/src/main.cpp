@@ -148,6 +148,8 @@ void loop() {
         Serial.print("Unknown paper color detected: ");
         logRgbValues();
     }
+
+    delay(1000);
 }
 
 void openLid(Servo &servo) {
